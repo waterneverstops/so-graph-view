@@ -1,5 +1,5 @@
 # ScriptableObject Graph View
-Unity editor tool that opens a graph view for any ScriptableObject asset and visualizes references to other ScriptableObjects.
+Unity Editor tool that opens a graph view for any ScriptableObject asset, visualizes references to other ScriptableObjects, and allows editing serialized fields directly inside graph nodes.
 
 ![Graph View Screenshot](example.png)
 
