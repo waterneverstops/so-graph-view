@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "unity": "6000.3",
   "description": "Graph viewer/editor for ScriptableObject references.",
+  "keywords": [
+    "ScriptableObject",
+    "Graph"
+  ],
   "author": {
     "name": "Vyacheslav Ryndin",
     "url": "https://github.com/waterneverstops/so-graph-view.git"
