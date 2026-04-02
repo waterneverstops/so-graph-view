@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.Experimental.GraphView;
 using UnityEngine;
@@ -8,9 +8,19 @@ namespace ScriptableObjectGraph.Editor
 {
     public sealed class ScriptableObjectGraphView : GraphView
     {
+        private const float DefaultStartX = 80f;
+        private const float DefaultStartY = 80f;
+        private const float DefaultNodeWidth = 360f;
+        private const float DefaultNodeMinHeight = 260f;
+        private const float DefaultHorizontalSpacing = 140f;
+        private const float DefaultVerticalSpacing = 40f;
+
         private readonly Dictionary<ScriptableObject, ScriptableObjectNodeView> _nodeViews = new();
 
         private bool _allowGraphMutationsInternally;
+        private bool _isApplyingAutoLayout;
+        private bool _layoutRefreshQueued;
+        private ScriptableObjectGraphData _graphData;
 
         public ScriptableObjectGraphView()
         {
@@ -47,11 +57,18 @@ namespace ScriptableObjectGraph.Editor
             try
             {
                 ClearGraphInternal();
+                _graphData = graphData;
 
                 if (graphData == null || graphData.Root == null) return;
 
-                var layouts = ScriptableObjectGraphLayout.Calculate(graphData, startX: 80f, startY: 80f, nodeWidth: 360f, nodeMinHeight: 260f,
-                    horizontalSpacing: 140f, verticalSpacing: 40f);
+                var layouts = ScriptableObjectGraphLayout.Calculate(
+                    graphData,
+                    startX: DefaultStartX,
+                    startY: DefaultStartY,
+                    nodeWidth: DefaultNodeWidth,
+                    nodeMinHeight: DefaultNodeMinHeight,
+                    horizontalSpacing: DefaultHorizontalSpacing,
+                    verticalSpacing: DefaultVerticalSpacing);
 
                 foreach (var pair in graphData.Nodes)
                 {
@@ -59,6 +76,7 @@ namespace ScriptableObjectGraph.Editor
                     if (nodeData.Target == null) continue;
 
                     var node = new ScriptableObjectNodeView(nodeData.Target);
+                    node.LayoutChanged += OnNodeLayoutChanged;
 
                     if (layouts.TryGetValue(nodeData.Target, out var nodeLayout))
                     {
@@ -66,7 +84,7 @@ namespace ScriptableObjectGraph.Editor
                     }
                     else
                     {
-                        node.SetPosition(new Rect(80, 80, 360, 260));
+                        node.SetPosition(new Rect(DefaultStartX, DefaultStartY, DefaultNodeWidth, DefaultNodeMinHeight));
                     }
 
                     _nodeViews[nodeData.Target] = node;
@@ -78,7 +96,6 @@ namespace ScriptableObjectGraph.Editor
                     if (edgeData.From == null || edgeData.To == null) continue;
 
                     if (!_nodeViews.TryGetValue(edgeData.From, out var fromNode)) continue;
-
                     if (!_nodeViews.TryGetValue(edgeData.To, out var toNode)) continue;
 
                     var edge = new Edge
@@ -96,6 +113,8 @@ namespace ScriptableObjectGraph.Editor
 
                     AddElement(edge);
                 }
+
+                QueueAutoLayoutRefresh();
             }
             finally
             {
@@ -125,9 +144,74 @@ namespace ScriptableObjectGraph.Editor
             AddToSelection(node);
         }
 
+        private void OnNodeLayoutChanged()
+        {
+            if (_isApplyingAutoLayout) return;
+            QueueAutoLayoutRefresh();
+        }
+
+        private void QueueAutoLayoutRefresh()
+        {
+            if (_layoutRefreshQueued || _graphData == null) return;
+
+            _layoutRefreshQueued = true;
+            schedule.Execute(() =>
+            {
+                _layoutRefreshQueued = false;
+                ApplyAutoLayout();
+            }).StartingIn(0);
+        }
+
+        private void ApplyAutoLayout()
+        {
+            if (_graphData == null || _nodeViews.Count == 0) return;
+
+            var heights = new Dictionary<ScriptableObject, float>();
+            foreach (var pair in _nodeViews)
+            {
+                var node = pair.Value;
+                var height = node.layout.height;
+                if (height <= 0f)
+                {
+                    height = node.GetPosition().height;
+                }
+
+                heights[pair.Key] = Mathf.Max(DefaultNodeMinHeight, height);
+            }
+
+            var layouts = ScriptableObjectGraphLayout.Calculate(
+                _graphData,
+                heights,
+                startX: DefaultStartX,
+                startY: DefaultStartY,
+                nodeWidth: DefaultNodeWidth,
+                nodeMinHeight: DefaultNodeMinHeight,
+                horizontalSpacing: DefaultHorizontalSpacing,
+                verticalSpacing: DefaultVerticalSpacing);
+
+            _isApplyingAutoLayout = true;
+            try
+            {
+                foreach (var pair in _nodeViews)
+                {
+                    if (!layouts.TryGetValue(pair.Key, out var nodeLayout)) continue;
+                    pair.Value.SetPosition(nodeLayout.Rect);
+                }
+            }
+            finally
+            {
+                _isApplyingAutoLayout = false;
+            }
+        }
+
         private void ClearGraphInternal()
         {
             ClearSelection();
+
+            foreach (var node in _nodeViews.Values)
+            {
+                node.LayoutChanged -= OnNodeLayoutChanged;
+            }
 
             foreach (var edge in edges.ToList())
             {
@@ -140,6 +224,7 @@ namespace ScriptableObjectGraph.Editor
             }
 
             _nodeViews.Clear();
+            _layoutRefreshQueued = false;
         }
     }
 }

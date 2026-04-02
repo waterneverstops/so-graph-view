@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -15,6 +15,7 @@ namespace ScriptableObjectGraph.Editor
 
         public static Dictionary<ScriptableObject, NodeLayout> Calculate(
             ScriptableObjectGraphData graph,
+            IReadOnlyDictionary<ScriptableObject, float> nodeHeights = null,
             float startX = 80f,
             float startY = 80f,
             float nodeWidth = 360f,
@@ -56,6 +57,17 @@ namespace ScriptableObjectGraph.Editor
             var placed = new HashSet<ScriptableObject>();
             var nextLeafY = 0f;
 
+            float GetNodeHeight(ScriptableObject node)
+            {
+                if (node == null) return nodeMinHeight;
+                if (nodeHeights != null && nodeHeights.TryGetValue(node, out var height))
+                {
+                    return Mathf.Max(nodeMinHeight, height);
+                }
+
+                return nodeMinHeight;
+            }
+
             float LayoutNode(ScriptableObject node, int depth)
             {
                 if (node == null) return nextLeafY;
@@ -65,16 +77,16 @@ namespace ScriptableObjectGraph.Editor
                     return result[node].CenterY;
                 }
 
+                var nodeHeight = GetNodeHeight(node);
                 var children = childrenMap.TryGetValue(node, out var c) ? c : new List<ScriptableObject>();
-
                 var unplacedChildren = children.Where(x => x != null && !placed.Contains(x)).ToList();
 
                 float centerY;
 
                 if (unplacedChildren.Count == 0)
                 {
-                    centerY = nextLeafY;
-                    nextLeafY += nodeMinHeight + verticalSpacing;
+                    centerY = nextLeafY + nodeHeight * 0.5f;
+                    nextLeafY += nodeHeight + verticalSpacing;
                 }
                 else
                 {
@@ -90,12 +102,12 @@ namespace ScriptableObjectGraph.Editor
                 }
 
                 var x = startX + depth * (nodeWidth + horizontalSpacing);
-                var y = startY + centerY;
+                var y = startY + centerY - nodeHeight * 0.5f;
 
                 result[node] = new NodeLayout
                 {
                     CenterY = centerY,
-                    Rect = new Rect(x, y, nodeWidth, nodeMinHeight)
+                    Rect = new Rect(x, y, nodeWidth, nodeHeight)
                 };
 
                 return centerY;
@@ -108,15 +120,51 @@ namespace ScriptableObjectGraph.Editor
                 if (node == null || result.ContainsKey(node))
                     continue;
 
+                var nodeHeight = GetNodeHeight(node);
+                var centerY = nextLeafY + nodeHeight * 0.5f;
+
                 result[node] = new NodeLayout
                 {
-                    CenterY = nextLeafY,
-                    Rect = new Rect(startX, startY + nextLeafY, nodeWidth, nodeMinHeight)
+                    CenterY = centerY,
+                    Rect = new Rect(startX, startY + nextLeafY, nodeWidth, nodeHeight)
                 };
-                nextLeafY += nodeMinHeight + verticalSpacing;
+
+                nextLeafY += nodeHeight + verticalSpacing;
             }
 
+            ResolveColumnOverlaps(graph, result, verticalSpacing);
+
             return result;
+        }
+
+        private static void ResolveColumnOverlaps(
+            ScriptableObjectGraphData graph,
+            Dictionary<ScriptableObject, NodeLayout> layouts,
+            float verticalSpacing)
+        {
+            foreach (var depthGroup in graph.Nodes
+                         .Where(pair => pair.Key != null && layouts.ContainsKey(pair.Key))
+                         .GroupBy(pair => pair.Value.Depth))
+            {
+                var orderedNodes = depthGroup
+                    .Select(pair => pair.Key)
+                    .OrderBy(node => layouts[node].Rect.y)
+                    .ToList();
+
+                var nextY = float.NegativeInfinity;
+                foreach (var node in orderedNodes)
+                {
+                    var layout = layouts[node];
+                    if (layout.Rect.y < nextY)
+                    {
+                        layout.Rect.y = nextY;
+                        layout.CenterY = layout.Rect.center.y;
+                        layouts[node] = layout;
+                    }
+
+                    nextY = layout.Rect.y + layout.Rect.height + verticalSpacing;
+                }
+            }
         }
 
         private static string GetStableKey(ScriptableObject so)

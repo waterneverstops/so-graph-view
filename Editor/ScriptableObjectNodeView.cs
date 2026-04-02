@@ -1,7 +1,8 @@
-﻿using UnityEditor;
+using UnityEditor;
 using UnityEditor.Experimental.GraphView;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace ScriptableObjectGraph.Editor
 {
@@ -10,9 +11,11 @@ namespace ScriptableObjectGraph.Editor
         private readonly ScriptableObject _target;
 
         private SerializedObject _serializedObject;
+        private float _lastKnownHeight = -1f;
 
         public Port InputPort { get; private set; }
         public Port OutputPort { get; private set; }
+        public event System.Action LayoutChanged;
 
         public string NodeGuid => _target == null ? string.Empty : AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(_target));
 
@@ -32,6 +35,8 @@ namespace ScriptableObjectGraph.Editor
 
             RefreshExpandedState();
             RefreshPorts();
+
+            RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
         }
 
         private void CreatePorts()
@@ -41,7 +46,6 @@ namespace ScriptableObjectGraph.Editor
             inputContainer.Add(InputPort);
 
             OutputPort = InstantiatePort(Orientation.Horizontal, Direction.Output, Port.Capacity.Multi, typeof(ScriptableObject));
-
             OutputPort.portName = "";
             outputContainer.Add(OutputPort);
         }
@@ -74,6 +78,24 @@ namespace ScriptableObjectGraph.Editor
 
                 extensionContainer.Add(field);
             }
+        }
+
+        private void OnGeometryChanged(GeometryChangedEvent evt)
+        {
+            var newHeight = evt.newRect.height;
+            if (newHeight <= 0f) return;
+
+            if (_lastKnownHeight < 0f)
+            {
+                _lastKnownHeight = newHeight;
+                LayoutChanged?.Invoke();
+                return;
+            }
+
+            if (Mathf.Abs(_lastKnownHeight - newHeight) < 0.5f) return;
+
+            _lastKnownHeight = newHeight;
+            LayoutChanged?.Invoke();
         }
     }
 }
