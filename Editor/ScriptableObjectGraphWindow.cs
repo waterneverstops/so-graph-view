@@ -1,17 +1,23 @@
-﻿using System.Linq;
+using System.Linq;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace ScriptableObjectGraph.Editor
 {
     public sealed class ScriptableObjectGraphWindow : EditorWindow
     {
+        private const string ShowDuplicatesPreferenceKey = "ScriptableObjectGraph.Editor.ShowDuplicates";
+
         private ScriptableObject _root;
         private ScriptableObjectGraphView _graphView;
+        private ToolbarToggle _showDuplicatesToggle;
 
         private string _lastSignature;
         private double _nextSignatureCheckTime;
         private bool _firstBuildDone;
+        private bool _showDuplicates = true;
 
         public static void Open(ScriptableObject root)
         {
@@ -23,13 +29,14 @@ namespace ScriptableObjectGraph.Editor
 
         private void OnEnable()
         {
+            _showDuplicates = EditorPrefs.GetBool(ShowDuplicatesPreferenceKey, true);
+
             EditorApplication.update += OnEditorUpdate;
             Undo.undoRedoPerformed += OnUndoRedo;
 
             if (_graphView == null)
             {
-                _graphView = new ScriptableObjectGraphView();
-                rootVisualElement.Add(_graphView);
+                CreateUi();
             }
 
             if (_root == null) return;
@@ -48,6 +55,36 @@ namespace ScriptableObjectGraph.Editor
 
             if (_graphView == null) return;
             RebuildGraph(frame: true);
+        }
+
+        private void CreateUi()
+        {
+            rootVisualElement.Clear();
+
+            var toolbar = new Toolbar();
+            _showDuplicatesToggle = new ToolbarToggle
+            {
+                text = "Show Duplicates",
+                value = _showDuplicates
+            };
+            _showDuplicatesToggle.RegisterValueChangedCallback(OnShowDuplicatesChanged);
+            toolbar.Add(_showDuplicatesToggle);
+            rootVisualElement.Add(toolbar);
+
+            _graphView = new ScriptableObjectGraphView();
+            _graphView.style.flexGrow = 1f;
+            rootVisualElement.Add(_graphView);
+        }
+
+        private void OnShowDuplicatesChanged(ChangeEvent<bool> evt)
+        {
+            _showDuplicates = evt.newValue;
+            EditorPrefs.SetBool(ShowDuplicatesPreferenceKey, _showDuplicates);
+
+            if (_root != null)
+            {
+                RebuildGraph(frame: false);
+            }
         }
 
         private void OnUndoRedo()
@@ -78,7 +115,7 @@ namespace ScriptableObjectGraph.Editor
             var oldSelectedGuid = _graphView.TryGetSelectedNodeGuid();
 
             var graph = ScriptableObjectGraphBuilder.Build(_root);
-            _graphView.Rebuild(graph);
+            _graphView.Rebuild(graph, _showDuplicates);
 
             _lastSignature = BuildReferenceSignature(_root);
 

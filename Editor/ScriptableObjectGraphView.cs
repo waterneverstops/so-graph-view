@@ -20,6 +20,7 @@ namespace ScriptableObjectGraph.Editor
         private bool _allowGraphMutationsInternally;
         private bool _isApplyingAutoLayout;
         private bool _layoutRefreshQueued;
+        private bool _showDuplicates = true;
         private ScriptableObjectGraphData _graphData;
 
         public ScriptableObjectGraphView()
@@ -51,18 +52,20 @@ namespace ScriptableObjectGraph.Editor
             return change;
         }
 
-        public void Rebuild(ScriptableObjectGraphData graphData)
+        public void Rebuild(ScriptableObjectGraphData graphData, bool showDuplicates)
         {
             _allowGraphMutationsInternally = true;
             try
             {
                 ClearGraphInternal();
                 _graphData = graphData;
+                _showDuplicates = showDuplicates;
 
                 if (graphData == null || graphData.Root == null) return;
 
                 var layouts = ScriptableObjectGraphLayout.Calculate(
                     graphData,
+                    showDuplicates,
                     startX: DefaultStartX,
                     startY: DefaultStartY,
                     nodeWidth: DefaultNodeWidth,
@@ -91,7 +94,7 @@ namespace ScriptableObjectGraph.Editor
                     AddElement(node);
                 }
 
-                foreach (var edgeData in graphData.Edges)
+                foreach (var edgeData in graphData.GetDisplayEdges(showDuplicates))
                 {
                     if (edgeData.From == null || edgeData.To == null) continue;
 
@@ -181,6 +184,7 @@ namespace ScriptableObjectGraph.Editor
 
             var layouts = ScriptableObjectGraphLayout.Calculate(
                 _graphData,
+                _showDuplicates,
                 heights,
                 startX: DefaultStartX,
                 startY: DefaultStartY,

@@ -15,6 +15,7 @@ namespace ScriptableObjectGraph.Editor
 
         public static Dictionary<ScriptableObject, NodeLayout> Calculate(
             ScriptableObjectGraphData graph,
+            bool showDuplicates = true,
             IReadOnlyDictionary<ScriptableObject, float> nodeHeights = null,
             float startX = 80f,
             float startY = 80f,
@@ -33,7 +34,7 @@ namespace ScriptableObjectGraph.Editor
                 childrenMap[node] = new List<ScriptableObject>();
             }
 
-            foreach (var edge in graph.Edges)
+            foreach (var edge in graph.GetDisplayEdges(showDuplicates))
             {
                 if (edge.From == null || edge.To == null) continue;
 
