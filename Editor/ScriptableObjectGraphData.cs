@@ -37,14 +37,14 @@ namespace ScriptableObjectGraph.Editor
 
             foreach (var edge in uniqueEdges)
             {
-                var hasOuterDuplicate = uniqueEdges.Any(candidate =>
+                var hasInnerDuplicate = uniqueEdges.Any(candidate =>
                     candidate != edge &&
                     candidate.To == edge.To &&
                     candidate.From != null &&
                     edge.From != null &&
-                    IsReachable(candidate.From, edge.From, outgoingMap));
+                    IsReachable(edge.From, candidate.From, outgoingMap));
 
-                if (!hasOuterDuplicate)
+                if (!hasInnerDuplicate)
                 {
                     filteredEdges.Add(edge);
                 }
