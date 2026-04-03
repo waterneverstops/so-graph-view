@@ -28,13 +28,14 @@ namespace ScriptableObjectGraph.Editor
 
             if (graph == null || graph.Root == null) return result;
 
+            var displayEdges = graph.GetDisplayEdges(showDuplicates);
             var childrenMap = new Dictionary<ScriptableObject, List<ScriptableObject>>();
             foreach (var node in graph.Nodes.Keys)
             {
                 childrenMap[node] = new List<ScriptableObject>();
             }
 
-            foreach (var edge in graph.GetDisplayEdges(showDuplicates))
+            foreach (var edge in displayEdges)
             {
                 if (edge.From == null || edge.To == null) continue;
 
@@ -55,6 +56,7 @@ namespace ScriptableObjectGraph.Editor
                     .ToList();
             }
 
+            var displayDepths = CalculateDisplayDepths(graph, childrenMap);
             var placed = new HashSet<ScriptableObject>();
             var nextLeafY = 0f;
 
@@ -95,14 +97,18 @@ namespace ScriptableObjectGraph.Editor
 
                     foreach (var child in unplacedChildren)
                     {
-                        var childCenter = LayoutNode(child, depth + 1);
+                        var childDepth = displayDepths.TryGetValue(child, out var resolvedDepth)
+                            ? resolvedDepth
+                            : depth + 1;
+                        var childCenter = LayoutNode(child, childDepth);
                         childCenters.Add(childCenter);
                     }
 
                     centerY = (childCenters.First() + childCenters.Last()) * 0.5f;
                 }
 
-                var x = startX + depth * (nodeWidth + horizontalSpacing);
+                var resolvedDepth = displayDepths.TryGetValue(node, out var storedDepth) ? storedDepth : depth;
+                var x = startX + resolvedDepth * (nodeWidth + horizontalSpacing);
                 var y = startY + centerY - nodeHeight * 0.5f;
 
                 result[node] = new NodeLayout
@@ -123,32 +129,64 @@ namespace ScriptableObjectGraph.Editor
 
                 var nodeHeight = GetNodeHeight(node);
                 var centerY = nextLeafY + nodeHeight * 0.5f;
+                var depth = displayDepths.TryGetValue(node, out var resolvedDepth) ? resolvedDepth : 0;
 
                 result[node] = new NodeLayout
                 {
                     CenterY = centerY,
-                    Rect = new Rect(startX, startY + nextLeafY, nodeWidth, nodeHeight)
+                    Rect = new Rect(startX + depth * (nodeWidth + horizontalSpacing), startY + nextLeafY, nodeWidth, nodeHeight)
                 };
 
                 nextLeafY += nodeHeight + verticalSpacing;
             }
 
-            ResolveColumnOverlaps(graph, result, verticalSpacing);
+            ResolveColumnOverlaps(displayDepths, layouts: result, verticalSpacing);
 
             return result;
         }
 
-        private static void ResolveColumnOverlaps(
+        private static Dictionary<ScriptableObject, int> CalculateDisplayDepths(
             ScriptableObjectGraphData graph,
+            IReadOnlyDictionary<ScriptableObject, List<ScriptableObject>> childrenMap)
+        {
+            var depths = new Dictionary<ScriptableObject, int>();
+            if (graph.Root == null)
+            {
+                return depths;
+            }
+
+            var queue = new Queue<ScriptableObject>();
+            depths[graph.Root] = 0;
+            queue.Enqueue(graph.Root);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                var currentDepth = depths[current];
+
+                if (!childrenMap.TryGetValue(current, out var children)) continue;
+
+                foreach (var child in children)
+                {
+                    if (child == null || depths.ContainsKey(child)) continue;
+                    depths[child] = currentDepth + 1;
+                    queue.Enqueue(child);
+                }
+            }
+
+            return depths;
+        }
+
+        private static void ResolveColumnOverlaps(
+            IReadOnlyDictionary<ScriptableObject, int> depths,
             Dictionary<ScriptableObject, NodeLayout> layouts,
             float verticalSpacing)
         {
-            foreach (var depthGroup in graph.Nodes
-                         .Where(pair => pair.Key != null && layouts.ContainsKey(pair.Key))
-                         .GroupBy(pair => pair.Value.Depth))
+            foreach (var depthGroup in layouts.Keys
+                         .Where(node => node != null)
+                         .GroupBy(node => depths.TryGetValue(node, out var depth) ? depth : 0))
             {
                 var orderedNodes = depthGroup
-                    .Select(pair => pair.Key)
                     .OrderBy(node => layouts[node].Rect.y)
                     .ToList();
 
