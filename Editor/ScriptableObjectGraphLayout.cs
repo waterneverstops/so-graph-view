@@ -97,8 +97,8 @@ namespace ScriptableObjectGraph.Editor
 
                     foreach (var child in unplacedChildren)
                     {
-                        var childDepth = displayDepths.TryGetValue(child, out var resolvedDepth)
-                            ? resolvedDepth
+                        var childDepth = displayDepths.TryGetValue(child, out var childResolvedDepth)
+                            ? childResolvedDepth
                             : depth + 1;
                         var childCenter = LayoutNode(child, childDepth);
                         childCenters.Add(childCenter);
